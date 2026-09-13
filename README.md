@@ -110,11 +110,21 @@ detected / ground-truth counts. The slight over-count is vehicles straddling the
 stop line. This stage demonstrates the vision component is implementable; it is
 deliberately not wired into the control loop, which runs on ground truth.
 
-## Running it
+## Demo
 
 ```bash
 pip install -r requirements.txt
-python -c "import site,sumo,os;open(os.path.join(site.getsitepackages()[-1],'sumo_tools.pth'),'w').write(os.path.join(sumo.SUMO_HOME,'tools'))"   # once: makes sumolib/traci importable + IDE-resolvable
+python scripts/setup_sumo_path.py        # once: makes sumolib/traci importable + IDE-resolvable
+python scripts/demo.py watch             # sumo-gui, 3x3 grid, imbalanced morning peak, adaptive control
+python scripts/demo.py compare           # fixed vs adaptive on the same window, prints a table
+```
+
+`watch --control fixed` shows the baseline for contrast; `--network single` uses one
+intersection (its `compare` takes about a minute: wait 112 s → 31 s).
+
+## Running it
+
+```bash
 pytest tests/                                                                 # 91 tests
 
 python -m src.citygen --network configs/network_eixample.yaml --demand configs/demand_balanced.yaml

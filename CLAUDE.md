@@ -31,7 +31,7 @@ configs/          - YAML configs (demand curve params, network topology, control
 Do not start step N+1 until step N has passing tests and a runnable example.
 
 ## Conventions
-- Python 3.10, type hints on all public functions.
+- Python 3.12+ (developed and run on 3.14; CI runs 3.12), type hints on all public functions.
 - Controller logic (`src/controller`) must stay side-effect-free and simulator-agnostic — it should be testable with plain dicts/arrays, no traci imports. This is the piece most likely to get reused or swapped out; keep it decoupled.
 - Config via YAML in `configs/`, loaded once, passed explicitly — no global state, no reading env vars deep in the call stack.
 - Every new module in `src/` gets a corresponding test in `tests/` before being wired into the pipeline.
@@ -45,7 +45,8 @@ Do not start step N+1 until step N has passing tests and a runnable example.
 - Everything else (file structure, helper naming, test scaffolding) — use best judgment, no need to ask.
 
 ## Running things
-- Install: `pip install -r requirements.txt` (`eclipse-sumo` bundles the SUMO binaries + sumolib/traci; `src/sumo_env.py` locates them, honouring `SUMO_HOME` if set).
+- Demo: `python scripts/demo.py watch|compare` (builds scenarios on first use). CI: `.github/workflows/ci.yml` runs pytest + a short headless sim on Ubuntu/Python 3.12.
+- Install: `pip install -r requirements.txt`, then `python scripts/setup_sumo_path.py` once (`eclipse-sumo` bundles the SUMO binaries + sumolib/traci; `src/sumo_env.py` locates them, honouring `SUMO_HOME` if set).
 - Unit tests: `pytest tests/`
 - Build a scenario: `python -m src.citygen --network configs/network_eixample.yaml --demand configs/demand_balanced.yaml` → `sumo_scenarios/eixample_3x3__balanced.sumocfg` (+ `.net.xml`, `.rou.xml`, `.tls.add.xml`). Network configs: `network_single.yaml` (1 intersection), `network_eixample.yaml` (3x3). Demand configs: `demand_{light,balanced,imbalanced,heavy}.yaml`.
 - Plot a demand profile vs. sampled departures: `python scripts/plot_demand.py --network <net.yaml> --demand <demand.yaml>`

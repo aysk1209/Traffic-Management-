@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install dependencies (eclipse-sumo bundles the SUMO binaries)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run tests
+        # SUMO-dependent tests run headless (sumo, netconvert, traci); YOLOv6 tests skip without torch/weights
+        run: pytest tests/ -q
+      - name: Build a scenario end-to-end
+        run: |
+          python -m src.citygen --network configs/network_single.yaml --demand configs/demand_light.yaml
+          python -m src.sim --scenario sumo_scenarios/single_intersection__light.sumocfg --control adaptive --begin 28800 --end 30600
