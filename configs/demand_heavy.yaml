@@ -1,0 +1,24 @@
+# Heavy-volume scenario: ~115 % of the balanced profile (peak ~275 veh/h/lane).
+# Oversaturates the fixed per-approach timer at the peaks, so persistent queues
+# and some spillback are expected; the question is how gracefully it degrades.
+# (130 % / ~315 per lane was tried and produces unrecoverable gridlock under
+# fixed timing from 08:30 onward, which is useless as a comparison case.)
+name: heavy
+seed: 42
+time: {day_seconds: 86400, time_scale: 1.0, step_length_s: 1.0}
+curve:
+  night_veh_h_lane: 18
+  day_veh_h_lane: 105
+  day_start_h: 6.5       # centre of the morning ramp-up
+  day_end_h: 21.5        # centre of the evening ramp-down
+  ramp_width_h: 0.75     # ramp steepness (logistic scale)
+  peaks:
+    - {centre_h: 8.75, sigma_h: 1.0, extra_veh_h_lane: 170}   # morning rush
+    - {centre_h: 18.0, sigma_h: 1.2, extra_veh_h_lane: 155}   # evening rush
+side_weights: {north: 1.0, east: 1.0, south: 1.0, west: 1.0}
+arrivals: poisson         # non-homogeneous Poisson process, rate = curve(t)
+
+vehicle_mix:              # share of departures per vType (must sum to 1)
+  car: 0.85
+  van: 0.10
+  truck: 0.05

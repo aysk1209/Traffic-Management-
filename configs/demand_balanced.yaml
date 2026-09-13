@@ -1,0 +1,43 @@
+# Diurnal demand profile — the "what does realistic traffic mean" decision.
+#
+# Shape: a night floor, a smooth step up to a daytime level (~06:30 rise,
+# ~21:30 fall), plus two Gaussian rush-hour bumps centred at 08:45 and 18:00.
+# The evening peak is slightly wider than the morning one, matching typical
+# urban count data (morning commutes are tightly clustered, evening ones spread).
+#
+# Rates are vehicles per hour *per entry lane* at each perimeter entry road, so
+# a 3-lane avenue admits 1.5x the flow of a 2-lane street at the same profile.
+#
+# Level: peak = day + am_peak = 240 veh/h/lane. Calibrated on the 3x3 grid under
+# the fixed 20 s per-approach timing (4 phases, 96 s cycle => each approach gets
+# ~21 % green ~= 375 veh/h/lane of theoretical capacity, less in practice because
+# of turning friction and spillback): 240/lane is the level where the fixed timer
+# just about survives the morning peak with queues on every approach but no
+# gridlock — i.e. the regime where smarter green allocation should matter.
+name: balanced
+seed: 42
+
+time:
+  day_seconds: 86400   # one simulated day
+  time_scale: 1.0      # >1 compresses the day (curve hours = sim_s * time_scale / 3600)
+  step_length_s: 1.0
+
+curve:
+  night_veh_h_lane: 15
+  day_veh_h_lane: 90
+  day_start_h: 6.5       # centre of the morning ramp-up
+  day_end_h: 21.5        # centre of the evening ramp-down
+  ramp_width_h: 0.75     # ramp steepness (logistic scale)
+  peaks:
+    - {centre_h: 8.75, sigma_h: 1.0, extra_veh_h_lane: 150}   # morning rush
+    - {centre_h: 18.0, sigma_h: 1.2, extra_veh_h_lane: 135}   # evening rush
+
+# Multiplier on arrival rate for entries on each side of the grid. All 1.0 = balanced.
+side_weights: {north: 1.0, east: 1.0, south: 1.0, west: 1.0}
+
+arrivals: poisson         # non-homogeneous Poisson process, rate = curve(t)
+
+vehicle_mix:              # share of departures per vType (must sum to 1)
+  car: 0.85
+  van: 0.10
+  truck: 0.05

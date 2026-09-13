@@ -1,0 +1,24 @@
+# Same diurnal curve and the SAME total load as demand_balanced.yaml, but skewed:
+# the west side feeds ~2.6x what any other side does (commuter corridor). Because
+# the side weights sum to 3.9 ~= 4.0, any difference in outcome vs. 'balanced' is
+# due to the *distribution* of demand, not its volume. This is the scenario where
+# a fixed timer wastes green on the light approaches while the west queue grows.
+name: imbalanced
+seed: 42
+time: {day_seconds: 86400, time_scale: 1.0, step_length_s: 1.0}
+curve:
+  night_veh_h_lane: 15
+  day_veh_h_lane: 90
+  day_start_h: 6.5       # centre of the morning ramp-up
+  day_end_h: 21.5        # centre of the evening ramp-down
+  ramp_width_h: 0.75     # ramp steepness (logistic scale)
+  peaks:
+    - {centre_h: 8.75, sigma_h: 1.0, extra_veh_h_lane: 150}   # morning rush
+    - {centre_h: 18.0, sigma_h: 1.2, extra_veh_h_lane: 135}   # evening rush
+side_weights: {north: 0.7, east: 0.7, south: 0.7, west: 1.8}
+arrivals: poisson         # non-homogeneous Poisson process, rate = curve(t)
+
+vehicle_mix:              # share of departures per vType (must sum to 1)
+  car: 0.85
+  van: 0.10
+  truck: 0.05
