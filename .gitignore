@@ -15,3 +15,4 @@ sumo_scenarios/*.png
 sumo_scenarios/output/
 external/YOLOv6/
 *.log
+external/weights/
