@@ -44,6 +44,25 @@ sumo-gui -c sumo_scenarios/eixample_3x3__balanced.sumocfg
 
 Generated files in `sumo_scenarios/` are git-ignored; regenerate them with the command above.
 
+## The control loop (`src/sim`)
+
+Every step, for each signalized junction independently: ground-truth halting
+vehicles per approach (traci) → exponential smoothing (`src/smoothing`) → at the
+start of each cycle, queue-proportional green split with a floor (`src/controller`)
+→ phase durations pushed back to SUMO. No coordination between junctions.
+
+```bash
+python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --control adaptive
+python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --control fixed      # baseline
+python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --gui --begin 25200 --end 39600
+```
+
+Run the whole validation matrix (4 demand profiles × fixed / adaptive / adaptive-without-smoothing):
+
+```bash
+python scripts/run_experiments.py
+```
+
 ## Tests
 
 ```bash

@@ -50,7 +50,8 @@ Do not start step N+1 until step N has passing tests and a runnable example.
 - Build a scenario: `python -m src.citygen --network configs/network_eixample.yaml --demand configs/demand_balanced.yaml` → `sumo_scenarios/eixample_3x3__balanced.sumocfg` (+ `.net.xml`, `.rou.xml`, `.tls.add.xml`). Network configs: `network_single.yaml` (1 intersection), `network_eixample.yaml` (3x3). Demand configs: `demand_{light,balanced,imbalanced,heavy}.yaml`.
 - Plot a demand profile vs. sampled departures: `python scripts/plot_demand.py --network <net.yaml> --demand <demand.yaml>`
 - SUMO GUI run (for visual sanity check): `sumo-gui -c sumo_scenarios/<scenario>.sumocfg` (runs the fixed 20 s per-approach baseline program `per_approach`; phases are named `N_green`, `N_yellow`, `N_allred`, `E_green`, … so `src/sim` can address approaches by name)
-- Headless SUMO + traci run: entry point TBD once `src/sim` exists — document it here once it does.
+- Headless SUMO + traci control loop: `python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --control adaptive` (`--control fixed` = baseline with identical logging, `--no-smoothing` = raw counts into the controller, `--gui`, `--begin/--end` seconds to run a window, `--aggregate instant|cycle_max|cycle_mean`). Outputs `<run>_cycles.csv` (per junction per cycle: raw, smoothed, green per approach), `_stats.json`, `_tripinfo.xml`, `_summary.xml` in `sumo_scenarios/output/`.
+- Validation matrix (profiles x modes, writes `sumo_scenarios/output/experiments_<network>.md`): `python scripts/run_experiments.py --demands light balanced imbalanced heavy --modes fixed adaptive adaptive_nosmooth`. Full-day 3x3 runs take ~5-20 min each; use `--begin/--end` for quick checks.
 
 ## Do not
 - Do not vendor changes into `external/YOLOv6/` — wrap it from `src/detection` instead.
