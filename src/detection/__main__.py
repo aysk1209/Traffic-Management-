@@ -25,7 +25,7 @@ def _capture(args: argparse.Namespace) -> int:
 
     out = capture(CaptureConfig(sumocfg=Path(args.scenario), tls_id=args.tls, out_dir=Path(args.out),
                                 begin_s=args.begin, n_frames=args.frames, interval_s=args.interval,
-                                view_width_m=args.view_width, write_labels=True))
+                                view_width_m=args.view_width, warmup_s=args.warmup, write_labels=True))
     print(f"captured {args.frames} frames -> {out}")
     return 0
 
@@ -108,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--frames", type=int, default=30)
     c.add_argument("--interval", type=float, default=5.0)
     c.add_argument("--view-width", type=float, default=160.0)
+    c.add_argument("--warmup", type=float, default=120.0)
     c.add_argument("--out", default="sumo_scenarios/output/detection/poc")
     c.set_defaults(func=_capture)
     e = sub.add_parser("evaluate")

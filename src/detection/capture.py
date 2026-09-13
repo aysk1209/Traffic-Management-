@@ -34,6 +34,7 @@ class CaptureConfig:
     begin_s: float
     n_frames: int
     interval_s: float = 5.0
+    warmup_s: float = 120.0         # sim seconds to run before the first frame (network starts empty at begin_s)
     view_width_m: float = 160.0     # metres spanned horizontally by the frame
     width_px: int = 1280
     height_px: int = 960
@@ -97,6 +98,8 @@ def capture(cfg: CaptureConfig) -> Path:
         traci.gui.setOffset(view, jx, jy)
         traci.simulationStep()
         _fit_zoom(view, cfg.view_width_m * cfg.height_px / cfg.width_px)
+        for _ in range(int(round(cfg.warmup_s))):
+            traci.simulationStep()
         (xmin, ymin), (xmax, ymax) = traci.gui.getBoundary(view)
         transform = ViewTransform.from_screenshot(Box(xmin, ymin, xmax, ymax), cfg.width_px, cfg.height_px)
 

@@ -104,6 +104,29 @@ Deciding on a single frame's count thrashes and forfeits most of the gain; on a 
 signal the EMA cuts oscillation by a third and wait by 29 %. Aggregating over the whole
 previous cycle is a stronger filter still, and makes the EMA redundant on this signal.
 
+## Detection proof-of-concept (`src/detection`)
+
+Frames are captured from sumo-gui via traci ("real world" colour scheme, top-down,
+0.125 m/px) together with per-approach ground-truth counts and, for training, a YOLO
+box for every visible vehicle computed from traci position/heading/size. Lane ROIs
+are derived from the network geometry, not hand-drawn.
+
+The COCO-pretrained `yolov6n` detects **nothing** on these top-down sprites (0 of 1,508
+vehicles on the held-out set), so the model is fine-tuned on auto-labelled frames:
+
+```bash
+python scripts/build_detection_dataset.py                      # 7 junction/time/zoom jobs -> 280 labelled frames
+PYTHONPATH=external/YOLOv6 TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 python external/YOLOv6/tools/train.py --data-path sumo_scenarios/output/detection/dataset/dataset.yaml --conf-file configs/yolov6n_sim_finetune.py --img-size 640 --batch-size 8 --epochs 40 --workers 0 --device cpu --eval-interval 10 --output-dir sumo_scenarios/output/detection/runs --name yolov6n_sim
+python -m src.detection capture --scenario sumo_scenarios/eixample_3x3__imbalanced.sumocfg --tls n_1_0 --begin 33600 --warmup 240 --frames 40
+python -m src.detection evaluate --weights sumo_scenarios/output/detection/runs/yolov6n_sim/weights/best_ckpt.pt --annotate
+```
+
+Setup once: `git clone --depth 1 https://github.com/meituan/YOLOv6 external/YOLOv6`, download
+`yolov6n.pt` (release 0.4.0) to `external/weights/`, and `pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu`
+plus `opencv-python scipy tqdm addict requests psutil tensorboard pycocotools`.
+`TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` is needed because YOLOv6 checkpoints pickle whole
+model objects, which recent PyTorch refuses by default; `external/` is never modified.
+
 ## Tests
 
 ```bash
