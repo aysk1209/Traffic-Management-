@@ -1,0 +1,11 @@
+# Green-time allocation constants (src/controller). Times in seconds.
+#
+# cycle_s matches the fixed-timing baseline written by src/citygen
+# (4 approaches x (20 green + 3 yellow + 1 all-red) = 96 s) so that controller
+# vs. baseline comparisons differ only in how the green budget is split.
+cycle_s: 96
+yellow_s: 3          # must match signals.yellow_s in the network config
+all_red_s: 1         # must match signals.all_red_s in the network config
+min_green_s: 5       # floor: no approach is starved, even at zero measured density
+max_green_s: 45      # cap: one approach can never take more than ~56 % of the green budget
+approaches: [N, E, S, W]   # order of phases in the per_approach TLS program
