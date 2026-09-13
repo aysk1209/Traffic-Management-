@@ -1,134 +1,150 @@
-# TMS — vision-inspired adaptive traffic signal control on a synthetic city
+# Adaptive traffic signal control on a synthetic city
 
-See `PROJECT_CONTEXT.md` for the spec and `CLAUDE.md` for working conventions.
+Queue-proportional traffic-light control, built and validated entirely inside
+[SUMO](https://eclipse.dev/sumo/) on a made-up city with realistic rush-hour traffic.
+Fixed-interval signals waste green time on empty approaches while congested ones
+queue; this controller measures the queue on every approach and splits each cycle's
+green time in proportion. A YOLOv6 stage on rendered simulation frames shows the
+"vision" half is implementable; the control loop itself runs on simulator ground truth.
 
-## Setup
+`PROJECT_CONTEXT.md` is the spec, `CLAUDE.md` the working conventions.
+
+## Headline result
+
+![fixed vs adaptive](docs/figures/control_comparison.png)
+
+One full simulated day on a 3×3 signalised grid, four demand profiles, same
+controller constants throughout (no per-scenario retuning):
+
+| demand | fixed timer: mean wait | adaptive: mean wait | change | fixed teleports | adaptive teleports |
+|---|---|---|---|---|---|
+| light | 114 s | 87 s | −24 % | 0 | 0 |
+| balanced | 163 s | 110 s | −33 % | 1 | 0 |
+| imbalanced (west ×2.6) | 184 s | 104 s | −44 % | 0 | 0 |
+| heavy | 1,769 s — gridlock, 18k vehicles never arrive | 118 s | — | 6,418 | 0 |
+
+![heavy day timeline](docs/figures/day_timeline_heavy.png)
+
+## How it works
+
+```
+SUMO (sumo / sumo-gui)
+   │  halting vehicles per approach, every second (traci)          ← src/sim
+   ▼
+exponential smoothing, half-life 10 s                              ← src/smoothing
+   │  peak of the smoothed queue over the previous cycle
+   ▼
+green_i = 5 s floor + (80 s budget − 4×5 s) · q_i / Σq, cap 45 s    ← src/controller (pure function)
+   │  phase durations for the next 96 s cycle
+   ▼
+traci.trafficlight.setPhaseDuration  — every junction independently, no coordination
+```
+
+![green allocation](docs/figures/green_allocation.png)
+
+### The city (`src/citygen`)
+
+Inspired by Barcelona's Eixample: a uniform two-way grid where every crossing is a
+plain 4-way signal, with a 3-lane avenue through the middle in each direction and
+2-lane streets elsewhere. Blocks are 250 m rather than the real 133 m because
+uncoordinated signals on short blocks spill queues back into the upstream junction
+(measured: gridlock at ~200 veh/h/lane). `configs/network_single.yaml` is the 1×1
+case used for first tests.
+
+![network](docs/figures/network_eixample_3x3.png)
+
+Demand is a diurnal curve per entry lane — night floor, daytime plateau, Gaussian
+rush hours at 08:45 and 18:00 — sampled as a non-homogeneous Poisson process, with
+perimeter-to-perimeter trips routed by SUMO. Profiles: `light`, `balanced` (peak
+240 veh/h/lane, the last level the fixed timer survives), `imbalanced` (same total,
+skewed west), `heavy` (beyond fixed-timing capacity).
+
+![demand](docs/figures/demand_balanced.png)
+
+### Design decisions (all recorded in the configs)
+
+| decision | choice | why |
+|---|---|---|
+| cycle length | fixed 96 s (4 × 20 s green + 4 × 4 s yellow/all-red) | identical budget to the baseline, so gains come only from *how* it is split |
+| allocation | proportional with a 5 s floor and 45 s cap | no approach is ever starved; none can hog the cycle |
+| smoothing | EMA, half-life 10 s | one knob, no warm-up, spike-resistant |
+| what the controller sees | peak smoothed queue over the previous cycle | the instantaneous value is biased against the approach just served (wait 40 s → 30 s on the single junction) |
+| signal scheme | one green phase per approach (N, E, S, W) | "green time per approach" maps 1:1 onto a phase |
+
+### Why filter the signal at all
+
+Ground-truth counts are noise-free, so on their own smoothing only adds lag. With
+synthetic detector noise injected (occlusion misses, duplicates, frame drops, phantom
+bursts — `configs/noise_detector.yaml`) the picture is:
+
+![smoothing experiment](docs/figures/smoothing_experiment.png)
+
+Deciding on a single frame's count thrashes (15–16 s of green change per cycle) and
+forfeits most of the gain; on a noisy signal the EMA cuts oscillation by a third and
+wait by 29 %. Aggregating over the whole previous cycle is a stronger filter still,
+and is the default.
+
+### Detection proof-of-concept (`src/detection`)
+
+Frames come from sumo-gui via traci (top-down "real world" scheme, 0.125 m/px),
+with per-approach ground-truth counts and, for training, a box for every visible
+vehicle computed from traci position/heading/size. Lane ROIs are derived from the
+network geometry. The COCO-pretrained `yolov6n` detects **nothing** on these
+sprites (0 of 1,508 vehicles on a held-out set), so the model is fine-tuned on
+auto-labelled frames; `python -m src.detection evaluate` then scores detected vs.
+ground-truth counts per approach. This stage demonstrates the vision component is
+implementable; it is not wired into the control loop.
+
+## Running it
 
 ```bash
 pip install -r requirements.txt
-```
+python -c "import site,sumo,os;open(os.path.join(site.getsitepackages()[-1],'sumo_tools.pth'),'w').write(os.path.join(sumo.SUMO_HOME,'tools'))"   # once: makes sumolib/traci importable + IDE-resolvable
+pytest tests/                                                                 # 91 tests
 
-`eclipse-sumo` bundles the SUMO binaries (including `sumo-gui`) plus `sumolib`/`traci`;
-`src/sumo_env.py` locates them at runtime (honouring `SUMO_HOME` if you have a separate
-SUMO install). To make `sumolib`/`traci` importable everywhere — and resolvable by
-Pylance/IDEs — add a `.pth` once:
-
-```bash
-python -c "import site,sumo,os;open(os.path.join(site.getsitepackages()[-1],'sumo_tools.pth'),'w').write(os.path.join(sumo.SUMO_HOME,'tools'))"
-```
-
-## The synthetic city (`src/citygen`)
-
-A small grid inspired by Barcelona's Eixample: uniform two-way streets, every
-crossing a 4-way signalized junction, with a wider avenue through the middle in
-each direction. Rows/cols are configurable; `configs/network_single.yaml` is the
-1x1 case (one intersection), `configs/network_eixample.yaml` the 3x3 grid.
-Geometry choices and their calibration are documented in the config comments.
-
-Demand is a diurnal curve (night floor, daytime plateau, rush-hour peaks at
-08:45 and 18:00) sampled as a non-homogeneous Poisson process per perimeter
-entry. Four profiles ship in `configs/demand_*.yaml`: `light`, `balanced`,
-`imbalanced` (same total as balanced, skewed to the west side), `heavy`.
-
-Build a scenario:
-
-```bash
 python -m src.citygen --network configs/network_eixample.yaml --demand configs/demand_balanced.yaml
-```
-
-Plot the demand curve against the sampled departures (do this before trusting a new profile):
-
-```bash
 python scripts/plot_demand.py --network configs/network_eixample.yaml --demand configs/demand_balanced.yaml
-```
+sumo-gui -c sumo_scenarios/eixample_3x3__balanced.sumocfg                     # fixed-timing baseline, visual check
 
-Watch it in the GUI (fixed 20 s per-approach timing — the baseline the controller is compared against):
-
-```bash
-sumo-gui -c sumo_scenarios/eixample_3x3__balanced.sumocfg
-```
-
-Generated files in `sumo_scenarios/` are git-ignored; regenerate them with the command above.
-
-## The control loop (`src/sim`)
-
-Every step, for each signalized junction independently: ground-truth halting
-vehicles per approach (traci) → exponential smoothing (`src/smoothing`) → at the
-start of each cycle, queue-proportional green split with a floor (`src/controller`)
-→ phase durations pushed back to SUMO. No coordination between junctions.
-
-```bash
 python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --control adaptive
-python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --control fixed      # baseline
-python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --gui --begin 25200 --end 39600
-```
-
-Run the whole validation matrix (4 demand profiles × fixed / adaptive / adaptive-without-smoothing):
-
-```bash
-python scripts/run_experiments.py
-```
-
-Synthetic detector noise (occlusion misses, duplicates, frame drops, phantom bursts —
-`configs/noise_detector.yaml`) can be injected into the raw counts to test the
-smoothing stage; `--aggregate instant` makes the controller decide on a single
-frame's count instead of the previous cycle's peak:
-
-```bash
+python -m src.sim --scenario sumo_scenarios/eixample_3x3__balanced.sumocfg --control adaptive --gui --begin 25200 --end 39600
+python scripts/run_experiments.py --modes fixed adaptive                      # full-day matrix (~30 min)
 python scripts/run_experiments.py --demands imbalanced --modes adaptive adaptive_nosmooth --noise configs/noise_detector.yaml --aggregate instant --begin 25200 --end 39600
+python scripts/plot_results.py                                                # docs/figures/*.png
 ```
 
-## Results so far (3x3 grid, fixed 96 s cycle)
+`eclipse-sumo` bundles the SUMO binaries (including `sumo-gui`) with `sumolib`/`traci`;
+`src/sumo_env.py` locates them, honouring `SUMO_HOME` if you have a separate install.
+Generated scenarios and outputs live in `sumo_scenarios/` (git-ignored).
 
-06:00–13:00 window, ground-truth counts, default `cycle_max` aggregation:
-
-| demand | fixed: mean wait | adaptive: mean wait | fixed teleports | adaptive teleports |
-|---|---|---|---|---|
-| light | 114 s | 102 s | 0 | 0 |
-| balanced | 173 s | 121 s | 1 | 0 |
-| imbalanced | 200 s | 118 s | 0 | 0 |
-| heavy | 352 s | 128 s | 148 | 0 |
-
-Smoothing experiment, imbalanced, 07:00–11:00 (fixed baseline: 215 s wait):
-
-| aggregation | counts | EMA | mean wait | green oscillation |
-|---|---|---|---|---|
-| instant | clean | off | 195 s | 14.7 s/cycle |
-| instant | noisy | off | 209 s | 16.4 s/cycle |
-| instant | noisy | **on** | **149 s** | **10.9 s/cycle** |
-| cycle_max | clean | off | 120 s | 6.1 s/cycle |
-| cycle_max | noisy | off | 124 s | 4.5 s/cycle |
-| cycle_max | noisy | on | 125 s | 5.7 s/cycle |
-
-Deciding on a single frame's count thrashes and forfeits most of the gain; on a noisy
-signal the EMA cuts oscillation by a third and wait by 29 %. Aggregating over the whole
-previous cycle is a stronger filter still, and makes the EMA redundant on this signal.
-
-## Detection proof-of-concept (`src/detection`)
-
-Frames are captured from sumo-gui via traci ("real world" colour scheme, top-down,
-0.125 m/px) together with per-approach ground-truth counts and, for training, a YOLO
-box for every visible vehicle computed from traci position/heading/size. Lane ROIs
-are derived from the network geometry, not hand-drawn.
-
-The COCO-pretrained `yolov6n` detects **nothing** on these top-down sprites (0 of 1,508
-vehicles on the held-out set), so the model is fine-tuned on auto-labelled frames:
+Detection extras (optional):
 
 ```bash
-python scripts/build_detection_dataset.py                      # 7 junction/time/zoom jobs -> 280 labelled frames
-PYTHONPATH=external/YOLOv6 TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 python external/YOLOv6/tools/train.py --data-path sumo_scenarios/output/detection/dataset/dataset.yaml --conf-file configs/yolov6n_sim_finetune.py --img-size 640 --batch-size 8 --epochs 40 --workers 0 --device cpu --eval-interval 10 --output-dir sumo_scenarios/output/detection/runs --name yolov6n_sim
+git clone --depth 1 https://github.com/meituan/YOLOv6 external/YOLOv6
+curl -L -o external/weights/yolov6n.pt https://github.com/meituan/YOLOv6/releases/download/0.4.0/yolov6n.pt
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install opencv-python scipy tqdm addict requests psutil tensorboard pycocotools
+
+python scripts/build_detection_dataset.py                                     # 7 junction/time/zoom jobs → 280 labelled frames
+PYTHONPATH=external/YOLOv6 TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 python external/YOLOv6/tools/train.py --data-path sumo_scenarios/output/detection/dataset/dataset.yaml --conf-file configs/yolov6n_sim_finetune.py --img-size 640 --batch-size 8 --epochs 15 --workers 0 --device cpu --eval-interval 5 --output-dir sumo_scenarios/output/detection/runs --name yolov6n_sim
 python -m src.detection capture --scenario sumo_scenarios/eixample_3x3__imbalanced.sumocfg --tls n_1_0 --begin 33600 --warmup 240 --frames 40
 python -m src.detection evaluate --weights sumo_scenarios/output/detection/runs/yolov6n_sim/weights/best_ckpt.pt --annotate
 ```
 
-Setup once: `git clone --depth 1 https://github.com/meituan/YOLOv6 external/YOLOv6`, download
-`yolov6n.pt` (release 0.4.0) to `external/weights/`, and `pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu`
-plus `opencv-python scipy tqdm addict requests psutil tensorboard pycocotools`.
 `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` is needed because YOLOv6 checkpoints pickle whole
-model objects, which recent PyTorch refuses by default; `external/` is never modified.
+model objects, which recent PyTorch refuses by default. `external/` is never modified.
 
-## Tests
+## Repository layout
 
-```bash
-pytest tests/
+```
+src/citygen/      network + demand generator → sumo_scenarios/*.sumocfg
+src/controller/   green-time allocation (pure, no simulator imports)
+src/smoothing/    exponential moving average
+src/sim/          traci bridge, per-junction cycle logic, synthetic detector noise
+src/detection/    frame capture, ROIs, auto-labels, YOLOv6 wrapper, evaluation
+configs/          YAML for network, demand profiles, controller, smoothing, noise; YOLOv6 fine-tune config
+scripts/          plots, experiment matrix, dataset builder
+tests/            one module per package (pytest)
+docs/figures/     result figures used above
+external/         vendored YOLOv6 + weights (git-ignored)
 ```
