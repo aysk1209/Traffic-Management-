@@ -125,7 +125,7 @@ def _sumo_command(cfg: RunConfig, tripinfo: Path, summary: Path) -> list[str]:
     if cfg.seed is not None:
         cmd += ["--seed", str(cfg.seed)]
     if cfg.gui:
-        cmd += ["--start", "true"]
+        cmd += ["--start", "true", "--quit-on-end", "true"]
     return cmd
 
 
@@ -192,7 +192,7 @@ def run(cfg: RunConfig, controller_cfg: ControllerConfig, smoothing_cfg: Smoothi
         print(f"  SUMO closed the connection ({exc}); finishing run", flush=True)
     finally:
         try:
-            traci.close()
+            traci.close(wait=not cfg.gui)  # sumo-gui stays open after a disconnect; don't wait on it
         except Exception:
             pass
 
