@@ -1,0 +1,47 @@
+{
+  "weights": "sumo_scenarios\\output\\detection\\runs\\yolov6n_sim\\weights\\best_ckpt.pt",
+  "conf": 0.25,
+  "frames": 40,
+  "per_approach": {
+    "N": {
+      "mean_truth": 8.3,
+      "mean_detected": 9.375,
+      "mae": 1.125,
+      "bias": 1.075,
+      "corr": 0.9774941029960884,
+      "recall_proxy": 1.1295180722891567
+    },
+    "E": {
+      "mean_truth": 6.05,
+      "mean_detected": 6.975,
+      "mae": 1.175,
+      "bias": 0.925,
+      "corr": 0.937583407250304,
+      "recall_proxy": 1.1528925619834711
+    },
+    "S": {
+      "mean_truth": 4.6,
+      "mean_detected": 5.875,
+      "mae": 1.275,
+      "bias": 1.275,
+      "corr": 0.9808036409781637,
+      "recall_proxy": 1.2771739130434783
+    },
+    "W": {
+      "mean_truth": 18.75,
+      "mean_detected": 18.9,
+      "mae": 0.95,
+      "bias": 0.15,
+      "corr": 0.9782962576955514,
+      "recall_proxy": 1.008
+    }
+  },
+  "overall": {
+    "mean_truth": 9.425,
+    "mean_detected": 10.28125,
+    "mae": 1.13125,
+    "bias": 0.85625,
+    "corr": 0.9839833076473685,
+    "recall_proxy": 1.0908488063660478
+  }
+}

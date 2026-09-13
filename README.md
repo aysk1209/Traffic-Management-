@@ -91,9 +91,24 @@ with per-approach ground-truth counts and, for training, a box for every visible
 vehicle computed from traci position/heading/size. Lane ROIs are derived from the
 network geometry. The COCO-pretrained `yolov6n` detects **nothing** on these
 sprites (0 of 1,508 vehicles on a held-out set), so the model is fine-tuned on
-auto-labelled frames; `python -m src.detection evaluate` then scores detected vs.
-ground-truth counts per approach. This stage demonstrates the vision component is
-implementable; it is not wired into the control loop.
+280 auto-labelled frames (15 epochs, ~17 min on CPU, mAP@0.5 = 0.69 on the
+validation split). On a held-out junction and time not used for training
+(40 frames, 1,508 vehicle instances), detected counts per approach vs. traci:
+
+| approach | mean ground truth | mean detected | MAE (vehicles) | bias | correlation |
+|---|---|---|---|---|---|
+| N | 8.3 | 9.4 | 1.1 | +1.1 | 0.98 |
+| E | 6.1 | 7.0 | 1.2 | +0.9 | 0.94 |
+| S | 4.6 | 5.9 | 1.3 | +1.3 | 0.98 |
+| W | 18.8 | 18.9 | 1.0 | +0.2 | 0.98 |
+| **all** | 9.4 | 10.3 | **1.1** | +0.9 | **0.98** |
+
+![detection example](docs/figures/detection_example.png)
+
+Green boxes are detections, red boxes the geometry-derived approach ROIs with
+detected / ground-truth counts. The slight over-count is vehicles straddling the
+stop line. This stage demonstrates the vision component is implementable; it is
+deliberately not wired into the control loop, which runs on ground truth.
 
 ## Running it
 
