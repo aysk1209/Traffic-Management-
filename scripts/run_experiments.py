@@ -4,6 +4,7 @@
         --demands light balanced imbalanced heavy \
         --modes fixed adaptive adaptive_nosmooth \
         [--begin 21600 --end 46800]   # e.g. 06:00-13:00 only
+    [--noise configs/noise_detector.yaml] [--aggregate instant]   # smoothing experiment
 
 Each (profile, mode) run writes its own outputs to sumo_scenarios/output/ via
 src.sim; this script builds the scenarios first, runs everything sequentially and
@@ -25,6 +26,8 @@ from src.citygen.config import load_demand_config, load_network_config  # noqa: 
 from src.citygen.scenario import build_scenario  # noqa: E402
 from src.controller import load_controller_config  # noqa: E402
 from src.sim.bridge import RunConfig, RunStats, run  # noqa: E402
+from src.sim.junction import AGGREGATES  # noqa: E402
+from src.sim.noise import NoiseConfig, load_noise_config  # noqa: E402
 from src.smoothing import SmoothingConfig, load_smoothing_config  # noqa: E402
 
 MODES = {
@@ -44,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="sumo_scenarios/output")
     ap.add_argument("--scenarios", default="sumo_scenarios")
     ap.add_argument("--force", action="store_true", help="re-run even if stats.json exists")
+    ap.add_argument("--noise", default=None, help="noise YAML applied to raw counts in every run")
+    ap.add_argument("--aggregate", choices=AGGREGATES, default="cycle_max")
     args = ap.parse_args(argv)
 
     net_cfg = load_network_config(args.network)
@@ -51,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     smoothing_cfg = load_smoothing_config("configs/smoothing.yaml")
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+    noise = load_noise_config(args.noise) if args.noise else NoiseConfig.none()
+    suffix = ("_noisy" if args.noise else "") + ("" if args.aggregate == "cycle_max" else f"_{args.aggregate}")
 
     rows: list[dict] = []
     for demand in args.demands:
@@ -58,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         sc = build_scenario(net_cfg, dem_cfg, Path(args.scenarios))
         for mode in args.modes:
             spec = MODES[mode]
-            label = f"{sc.name}__{mode}"
+            label = f"{sc.name}__{mode}{suffix}"
             stats_path = out_dir / f"{label}_stats.json"
             if stats_path.exists() and not args.force:
                 stats = RunStats(**json.loads(stats_path.read_text(encoding="utf-8")))
@@ -68,7 +75,8 @@ def main(argv: list[str] | None = None) -> int:
                 t0 = time.time()
                 stats = run(
                     RunConfig(sumocfg=sc.cfg_path, control=spec["control"], begin_s=args.begin,
-                              end_s=args.end, out_dir=out_dir, label=label),
+                              end_s=args.end, out_dir=out_dir, label=label, noise=noise,
+                              aggregate=args.aggregate),
                     controller_cfg,
                     smoothing_cfg if spec["smoothing"] else SmoothingConfig.passthrough(),
                 )
@@ -76,13 +84,13 @@ def main(argv: list[str] | None = None) -> int:
                       f"travel={stats.mean_travel_time_s:.1f}s teleports={stats.teleports}", flush=True)
             rows.append(dict(demand=demand, mode=mode, **stats.as_dict()))
 
-    _write_table(rows, out_dir / f"experiments_{net_cfg.name}")
+    _write_table(rows, out_dir / f"experiments_{net_cfg.name}{suffix}")
     return 0
 
 
 def _write_table(rows: list[dict], stem: Path) -> None:
     cols = ["demand", "mode", "vehicles_arrived", "mean_travel_time_s", "mean_waiting_time_s",
-            "mean_time_loss_s", "teleports", "max_halting"]
+            "mean_time_loss_s", "teleports", "max_halting", "green_oscillation_s"]
     with open(stem.with_suffix(".csv"), "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()

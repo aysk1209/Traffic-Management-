@@ -22,6 +22,7 @@ from typing import Iterable
 
 from src.controller import ControllerConfig
 from src.sim.junction import CycleRecord, JunctionController, approach_of_phase
+from src.sim.noise import CountNoise, NoiseConfig
 from src.smoothing import SmoothingConfig
 from src.sumo_env import ensure_sumo_tools, sumo_binary
 
@@ -40,6 +41,7 @@ class RunConfig:
     label: str | None = None           # output file stem; default derived from scenario + mode
     seed: int | None = None
     aggregate: str = "cycle_max"       # see src/sim/junction.py AGGREGATES
+    noise: NoiseConfig = NoiseConfig.none()   # synthetic detector noise on the raw counts
 
     @property
     def run_name(self) -> str:
@@ -59,6 +61,7 @@ class RunStats:
     teleports: int
     max_halting: int
     cycles_logged: int
+    green_oscillation_s: float = 0.0   # mean |green_t - green_{t-1}| per approach across cycles
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -122,7 +125,7 @@ def _sumo_command(cfg: RunConfig, tripinfo: Path, summary: Path) -> list[str]:
     if cfg.seed is not None:
         cmd += ["--seed", str(cfg.seed)]
     if cfg.gui:
-        cmd += ["--start", "true", "--quit-on-end", "true"]
+        cmd += ["--start", "true"]
     return cmd
 
 
@@ -147,6 +150,8 @@ def run(cfg: RunConfig, controller_cfg: ControllerConfig, smoothing_cfg: Smoothi
 
     traci.start(_sumo_command(cfg, tripinfo, summary))
     n_cycles = 0
+    noise = CountNoise(cfg.noise)
+    osc = _Oscillation()
     try:
         junctions = build_junctions(controller_cfg, smoothing_cfg, cfg.aggregate)
         for j in junctions.values():
@@ -171,9 +176,10 @@ def run(cfg: RunConfig, controller_cfg: ControllerConfig, smoothing_cfg: Smoothi
                         for a, lanes in j.approach_lanes.items()
                     }
                     phase = tls_res[j.tls_id][tc.TL_CURRENT_PHASE]
-                    action = j.step(t, phase, counts)
+                    action = j.step(t, phase, noise.apply(counts))
                     if action.new_cycle is not None:
                         n_cycles += 1
+                        osc.add(action.new_cycle)
                         _write_cycle(writer, action.new_cycle)
                     if cfg.control == "adaptive" and action.set_phase_duration is not None:
                         traci.trafficlight.setPhaseDuration(j.tls_id, action.set_phase_duration)
@@ -181,10 +187,16 @@ def run(cfg: RunConfig, controller_cfg: ControllerConfig, smoothing_cfg: Smoothi
                     print(f"  t={t/3600:5.2f} h  running={traci.vehicle.getIDCount():5d}  "
                           f"arrived={traci.simulation.getArrivedNumber()}", flush=True)
                     next_progress += period
+    except traci.exceptions.FatalTraCIError as exc:
+        # SUMO ended the connection (GUI window closed, or quit at end time): finish with what we have
+        print(f"  SUMO closed the connection ({exc}); finishing run", flush=True)
     finally:
-        traci.close()
+        try:
+            traci.close()
+        except Exception:
+            pass
 
-    stats = summarise(cfg.run_name, cfg.control, tripinfo, summary, n_cycles)
+    stats = summarise(cfg.run_name, cfg.control, tripinfo, summary, n_cycles, osc.mean())
     (cfg.out_dir / f"{cfg.run_name}_stats.json").write_text(json.dumps(stats.as_dict(), indent=2), encoding="utf-8")
     return stats
 
@@ -198,13 +210,34 @@ def _all_lanes(j: JunctionController) -> Iterable[str]:
                 yield lane
 
 
+class _Oscillation:
+    """Running mean of |green change| between consecutive cycles, per junction/approach."""
+
+    def __init__(self) -> None:
+        self._last: dict[str, dict[str, float]] = {}
+        self._sum = 0.0
+        self._n = 0
+
+    def add(self, rec: CycleRecord) -> None:
+        prev = self._last.get(rec.tls_id)
+        if prev is not None:
+            for a, g in rec.green.items():
+                self._sum += abs(g - prev[a])
+                self._n += 1
+        self._last[rec.tls_id] = dict(rec.green)
+
+    def mean(self) -> float:
+        return self._sum / self._n if self._n else 0.0
+
+
 def _write_cycle(writer, rec: CycleRecord) -> None:
     for a in rec.green:
         writer.writerow([f"{rec.time_s:.0f}", rec.tls_id, a, f"{rec.raw[a]:.0f}",
                          f"{rec.smoothed[a]:.3f}", f"{rec.green[a]:.2f}"])
 
 
-def summarise(run_name: str, control: str, tripinfo: Path, summary: Path, n_cycles: int) -> RunStats:
+def summarise(run_name: str, control: str, tripinfo: Path, summary: Path, n_cycles: int,
+              green_oscillation_s: float = 0.0) -> RunStats:
     """Aggregate SUMO's tripinfo and summary outputs into :class:`RunStats`."""
     n = 0
     dur = wait = loss = 0.0
@@ -228,4 +261,5 @@ def summarise(run_name: str, control: str, tripinfo: Path, summary: Path, n_cycl
         mean_waiting_time_s=wait / n if n else 0.0,
         mean_time_loss_s=loss / n if n else 0.0,
         teleports=teleports, max_halting=max_halting, cycles_logged=n_cycles,
+        green_oscillation_s=green_oscillation_s,
     )

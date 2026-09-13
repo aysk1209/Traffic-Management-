@@ -1,0 +1,11 @@
+# Synthetic per-frame detector noise applied to ground-truth counts (src/sim/noise.py).
+# Models the failure modes a YOLO-style vehicle counter shows on rendered frames:
+# occlusion misses, duplicate boxes, dropped frames and spurious bursts. Used to
+# demonstrate that the smoothing stage keeps the controller stable on a noisy
+# signal; ground-truth counts alone have nothing to smooth.
+miss_p: 0.25       # each queued vehicle missed with p=0.25 (occlusion / partial visibility)
+dup_p: 0.05        # each detected vehicle double-counted with p=0.05
+dropout_p: 0.05    # 5 % of frames report zero for an approach (frame drop / flicker)
+spike_p: 0.03      # 3 % of frames add a spurious burst ...
+spike_max: 8       # ... of up to 8 phantom vehicles
+seed: 7

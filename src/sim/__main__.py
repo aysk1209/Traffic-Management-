@@ -4,6 +4,7 @@
     python -m src.sim --scenario ... --control adaptive --no-smoothing   # raw counts into the controller
     python -m src.sim --scenario ... --control fixed                     # baseline, same logging
     python -m src.sim --scenario ... --gui --begin 25200 --end 39600     # watch 07:00-11:00
+    python -m src.sim --scenario ... --noise configs/noise_detector.yaml  # synthetic detector noise on counts
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from pathlib import Path
 from src.controller import load_controller_config
 from src.sim.bridge import CONTROL_MODES, RunConfig, run
 from src.sim.junction import AGGREGATES
+from src.sim.noise import NoiseConfig, load_noise_config
 from src.smoothing import SmoothingConfig, load_smoothing_config
 
 
@@ -32,20 +34,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed", type=int, default=None, help="SUMO random seed")
     ap.add_argument("--aggregate", choices=AGGREGATES, default="cycle_max",
                     help="how smoothed estimates are condensed per cycle (default: cycle_max)")
+    ap.add_argument("--noise", default=None, help="noise YAML (e.g. configs/noise_detector.yaml) to perturb raw counts")
     args = ap.parse_args(argv)
 
     controller_cfg = load_controller_config(args.controller)
     smoothing_cfg = SmoothingConfig.passthrough() if args.no_smoothing else load_smoothing_config(args.smoothing)
-    label = args.label or (f"{Path(args.scenario).stem}__{args.control}" + ("_nosmooth" if args.no_smoothing else ""))
+    noise = load_noise_config(args.noise) if args.noise else NoiseConfig.none()
+    label = args.label or (f"{Path(args.scenario).stem}__{args.control}"
+                           + ("_nosmooth" if args.no_smoothing else "") + ("_noisy" if args.noise else ""))
     cfg = RunConfig(sumocfg=Path(args.scenario), control=args.control, gui=args.gui,
                     begin_s=args.begin, end_s=args.end, out_dir=Path(args.out), label=label, seed=args.seed,
-                    aggregate=args.aggregate)
+                    aggregate=args.aggregate, noise=noise)
     print(f"run {cfg.run_name}: control={cfg.control} alpha={smoothing_cfg.alpha:.3f} "
           f"cycle={controller_cfg.cycle_s:g}s floor={controller_cfg.min_green_s:g}s cap={controller_cfg.max_green_s}")
     stats = run(cfg, controller_cfg, smoothing_cfg)
     print(f"arrived={stats.vehicles_arrived}  mean travel={stats.mean_travel_time_s:.1f}s  "
           f"mean wait={stats.mean_waiting_time_s:.1f}s  mean time loss={stats.mean_time_loss_s:.1f}s  "
-          f"teleports={stats.teleports}  max halting={stats.max_halting}  cycles={stats.cycles_logged}")
+          f"teleports={stats.teleports}  max halting={stats.max_halting}  cycles={stats.cycles_logged}  "
+          f"green oscillation={stats.green_oscillation_s:.2f}s/cycle")
     print(f"outputs: {cfg.out_dir / (cfg.run_name + '_{cycles.csv,stats.json,tripinfo.xml,summary.xml}')}")
     return 0
 
