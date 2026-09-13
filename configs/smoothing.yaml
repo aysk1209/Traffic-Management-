@@ -1,0 +1,12 @@
+# Temporal smoothing of raw per-approach counts (src/smoothing).
+#
+# method: exponential moving average. The weight is given as a half-life so it
+# does not depend on how often counts are sampled: with 1 s samples and a 10 s
+# half-life, alpha ~= 0.067 — a one-sample spike (missed/duplicate detection,
+# occlusion flicker) shifts the estimate by only ~7 % of its height, while a
+# genuine queue build-up is ~75 % reflected after 20 s, well within one 96 s cycle.
+# Set half_life_s very small (or alpha: 1.0) to disable smoothing for comparison runs.
+method: exponential
+sample_interval_s: 1.0   # how often the sim layer samples counts
+half_life_s: 10.0
+# alpha: 0.067            # optional: give alpha directly instead of half_life_s
