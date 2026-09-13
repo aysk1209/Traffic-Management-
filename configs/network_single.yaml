@@ -1,0 +1,13 @@
+# Single 4-way intersection: the Eixample grid collapsed to 1x1. First target for
+# the end-to-end control loop before scaling to the 3x3 grid. E-W is a 3-lane
+# avenue, N-S a 2-lane street, so the geometry is asymmetric like the grid's.
+name: single_intersection
+grid: {rows: 1, cols: 1, block_length_m: 250, approach_length_m: 250}
+roads:
+  speed_kmh: 50
+  street_lanes: 2
+  avenue_lanes: 3
+  avenue_rows: [0]
+  avenue_cols: []
+  no_turnarounds: true
+signals: {scheme: per_approach, green_s: 20, yellow_s: 3, all_red_s: 1}

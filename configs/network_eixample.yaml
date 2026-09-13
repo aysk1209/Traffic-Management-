@@ -1,0 +1,44 @@
+# Synthetic road network inspired by Barcelona's Eixample (Cerdà plan, 1859).
+#
+# Why Eixample: it is the canonical "well-designed" urban grid — uniform two-way
+# streets on a regular ~133 m pitch (113 m block + 20 m street), every crossing a
+# plain 4-way signalized intersection, with a few wider avenues (Gran Via,
+# Diagonal, Passeig de Gràcia) cutting through. That gives realistic hierarchy
+# (avenue vs. street) without any geometry the controller has to special-case.
+#
+# This is *inspired by*, not a reproduction of, the real city — no real map data.
+# Two deliberate departures from the real Eixample, both calibrated by simulation:
+#   * blocks are 250 m centre-to-centre instead of 133 m. The real grid relies on
+#     one-way streets with coordinated green waves; multi-intersection coordination
+#     is out of scope here, and with uncoordinated per-approach signals a 133 m
+#     block only stores ~19 vehicles per lane, so queues spill back into the
+#     upstream junction and the whole grid locks at ~200 veh/h/lane. 250 m blocks
+#     (roughly Manhattan avenue spacing) about double that storage.
+#   * streets are 2 lanes/direction and avenues 3, closer to the real ~20 m / ~50 m
+#     carriageways than a 1-lane street would be.
+# rows/cols = 1 collapses it to a single intersection, which is the first thing
+# the control loop is validated against.
+name: eixample_3x3
+
+grid:
+  rows: 3                 # number of E-W roads (signalized intersections per column)
+  cols: 3                 # number of N-S roads
+  block_length_m: 250     # centre-to-centre spacing of adjacent intersections (see note above)
+  approach_length_m: 250  # length of the stub roads from the perimeter into the grid
+
+roads:
+  speed_kmh: 50           # Eixample posted limit on arteries
+  street_lanes: 2         # lanes per direction on ordinary streets
+  avenue_lanes: 3         # lanes per direction on avenues
+  avenue_rows: [1]        # indices (0 = south) of E-W roads that are avenues
+  avenue_cols: [1]        # indices (0 = west) of N-S roads that are avenues
+  no_turnarounds: true    # Eixample disallows U-turns at crossings
+
+signals:
+  # Fallback fixed-time program written into the scenario. The adaptive controller
+  # (src/controller via src/sim) overrides phase durations at runtime; these values
+  # only matter for a plain `sumo -c` run and as the baseline "fixed timer" case.
+  scheme: per_approach    # one green phase per incoming approach (N, E, S, W)
+  green_s: 20
+  yellow_s: 3
+  all_red_s: 1
