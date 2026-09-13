@@ -72,3 +72,14 @@ There is no camera feed and no plan to obtain one. Instead of recreating a speci
 - Pedestrian/cyclist signal phases
 - Real hardware deployment, camera procurement, or recreating a specific real city's actual road network/data
 - Any ML beyond the detection proof-of-concept (e.g. no traffic *prediction* models — this is reactive control based on current measured density, not forecasting)
+
+## Resolution of the open decisions (build of 2026-09-13)
+1. **Topology:** Eixample-inspired grid, configurable; validated on 1x1 first, then 3x3 (`configs/network_*.yaml`). Blocks 250 m, 2-lane streets / 3-lane avenues, per-approach 4-phase signals.
+2. **Demand curve:** night floor + daytime plateau + Gaussian peaks at 08:45 / 18:00, per entry lane, Poisson arrivals. `balanced` peak 240 veh/h/lane (calibrated as the last level fixed timing survives); `light` ×0.6; `heavy` ×1.07 (beyond fixed-timing capacity); `imbalanced` = same total as balanced, west side ×2.6 (`configs/demand_*.yaml`).
+3. **Smoothing:** exponential moving average, half-life 10 s at 1 s samples (`configs/smoothing.yaml`); the controller reads the peak of the smoothed estimate over the previous cycle.
+4. **Green-time formula:** proportional to queue density with a 5 s floor per approach and a 45 s cap (`configs/controller.yaml`).
+5. **Cycle length:** fixed 96 s (same budget as the 20 s-per-approach baseline), so comparisons isolate the split.
+6. **Frame capture:** sumo-gui screenshots via traci at fixed intervals, paired with traci state of the same step (`src/detection/capture.py`).
+7. **Lane ROIs:** computed from the network geometry and the view transform at capture time, written to `rois.json` — nothing hardcoded per scenario.
+
+Outcome against the success criteria: all met on the ground-truth loop (see README); the detection stage is a fine-tuned YOLOv6n on auto-labelled sim frames, evaluated against traci counts, and deliberately not wired into the control loop.
