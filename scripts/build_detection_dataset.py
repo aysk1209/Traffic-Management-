@@ -89,10 +89,13 @@ def main(argv: list[str] | None = None) -> int:
             name = f"{png.parent.parent.name}_{png.stem}"
             shutil.copyfile(png, img_dir / f"{name}.png")
             shutil.copyfile(label, lbl_dir / f"{name}.txt")
+    # Native separators on purpose: YOLOv6 finds labels by replacing the
+    # `{os.sep}images{os.sep}` substring of each image path, so forward slashes on
+    # Windows silently yield "no labels found" and a model that learns nothing.
+    train_dir = str((out / "images" / "train").resolve())
+    val_dir = str((out / "images" / "val").resolve())
     (out / "dataset.yaml").write_text(
-        f"train: {(out / 'images' / 'train').resolve().as_posix()}\n"
-        f"val: {(out / 'images' / 'val').resolve().as_posix()}\n"
-        f"test: {(out / 'images' / 'val').resolve().as_posix()}\n"
+        f"train: {train_dir}\nval: {val_dir}\ntest: {val_dir}\n"
         "is_coco: False\nnc: 1\nnames: ['vehicle']\n", encoding="utf-8")
     n_boxes = sum(1 for _, l in pairs for line in open(l, encoding="utf-8") if line.strip())
     print(f"dataset: {len(splits['train'])} train / {len(splits['val'])} val frames, {n_boxes} boxes -> {out / 'dataset.yaml'}")
